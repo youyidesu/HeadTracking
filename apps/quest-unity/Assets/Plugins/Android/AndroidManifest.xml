@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ===== 蓝牙（HT Turret 要连 ESP32-C5）=====
+         Android 12+ 必须运行时申请，见 BleLink.java 的 requestBtPerms() -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+                     android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH"
+                     android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+                     android:maxSdkVersion="30" />
+
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
+    <!-- 外接 UVC 采集卡要摄像头权限，否则 WebCamTexture 静默失败 -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- ===== 透视（Passthrough）=====
+         Mood: 没有这两行，Quest 会拒绝提供相机纹理，表现为背景纯黑 -->
+    <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
+    <uses-permission android:name="com.oculus.permission.USE_SCENE" />
+
+    <!-- USB host：采集卡插上时系统直接把 App 当默认处理者，自动授权（免弹窗） -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <application>
+        <meta-data android:name="com.oculus.feature.PASSTHROUGH" android:value="true" />
+
+        <!--Used when Application Entry is set to Activity, otherwise remove this activity block-->
+        <activity android:name="com.unity3d.player.UnityPlayerActivity"
+                  android:theme="@style/UnityThemeSelector">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
+        </activity>
+
+        <!--Used when Application Entry is set to GameActivity, otherwise remove this activity block-->
+        <activity android:name="com.unity3d.player.UnityPlayerGameActivity"
+                  android:theme="@style/BaseUnityGameActivityTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <!-- 关键：没有这行 Quest 会把应用当 2D 面板启动 -->
+                <category android:name="com.oculus.intent.category.VR" />
+            </intent-filter>
+            <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
+            <meta-data android:name="android.app.lib_name" android:value="game" />
+
+            <!-- 插上采集卡时自动拉起并授予 USB 权限（Quest 上不弹窗，只能靠这个） -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                       android:resource="@xml/device_filter" />
+        </activity>
+    </application>
+</manifest>

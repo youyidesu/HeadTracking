@@ -1,0 +1,16 @@
+{
+  "name": "@ht/relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PC 侧中转：WebSocket(16 B 帧) → UDP → ESP32-C5，替代 adb reverse + 直连。",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@ht/protocol": "*",
+    "ws": "^8.18.0"
+  }
+}

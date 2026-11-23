@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "headtracking protocol schemas",
+  "version": 1,
+  "files": [
+    "pose.frame16.json",
+    "pose.head30.json"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "headtracking-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "HeadTracking.Bridge: Quest3 头追 → ESP32-C5 → STM32F411 云台，含图传旁路与 BLE/WiFi 链路选型工具。",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -i --default-input-target relay -n relay,quest -c blue,magenta \"npm run dev -w @ht/relay\" \"npm run dev -w @ht/quest\"",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "node --test packages/protocol/test/*.test.js",
+    "gen:schema": "npm run gen:schema -w @ht/protocol",
+    "console": "pwsh -NoProfile -File apps/console/legacy/HeadTracker.ps1",
+    "mock:pose": "pwsh -NoProfile -File tools/mockpose.ps1",
+    "ble:latency": "python tools/ble_latency.py"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

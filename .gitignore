@@ -1,0 +1,75 @@
+# ── 编译产物 ──
+build/
+Debug/
+Release/
+*.o
+*.d
+*.obj
+*.elf
+*.hex
+*.bin
+*.map
+*.apk
+*.aab
+*.so
+*.jar
+*.aar
+
+# 例外 1：usbfilter.aar 是手写资源包（device_filter），需要入库
+!apps/quest-unity/Assets/Plugins/Android/usbfilter.aar
+
+# 例外 2：release/ 里放的是可直接烧录/安装的成品，需要入库
+!release/**
+# APK 走 GitHub Releases，不进仓库
+release/app/*.apk
+!release/**/*.bin
+!release/**/*.elf
+!release/**/*.hex
+
+# ── Unity ──
+Library/
+Temp/
+Obj/
+Logs/
+UserSettings/
+*.csproj
+*.sln
+*.unityproj
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+sysinfo.txt
+crashlytics-build.properties
+
+# ── ESP-IDF ──
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+build/
+
+# ── STM32CubeMX / CMake ──
+cmake-build-*/
+.vscode/.browse*
+.presets.json
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ── 抓的日志 ──
+tarlog*.txt
+*.log
+press*.txt
+live*.txt
+
+# ── 系统 ──
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,21 @@
+{
+  "title": "pose.head30",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "30 字节 qp_head_t（C5 → F411 SPI），小端，与 stm32test/BSP/Inc/esp_link.h 逐字节一致。",
+  "type": "object",
+  "properties": {
+    "magic":    { "type": "integer", "const": 42458, "description": "u16 0xA55A" },
+    "ver":      { "type": "integer", "const": 1 },
+    "flags":    { "type": "integer", "minimum": 0, "maximum": 255, "description": "0x01 VALID / 0x04 RECENTER / 0x08 ESTOP" },
+    "seq":      { "type": "integer", "minimum": 0, "description": "u32 序号" },
+    "t_us":     { "type": "integer", "minimum": 0, "description": "u32 C5 单调时钟微秒" },
+    "q":        { "type": "array", "items": { "type": "integer" }, "minItems": 4, "maxItems": 4, "description": "i16×4 四元数（F411 目前不用，填 0）" },
+    "yaw_cdeg": { "type": "integer", "description": "i16 度×100" },
+    "pitch_cdeg": { "type": "integer", "description": "i16 度×100" },
+    "yaw_rate": { "type": "integer", "description": "i16 度/秒×10" },
+    "pitch_rate": { "type": "integer", "description": "i16 度/秒×10" },
+    "crc":      { "type": "integer", "description": "u16 前 28 字节 CRC16-CCITT" }
+  },
+  "required": ["magic", "ver", "flags", "seq", "t_us", "yaw_cdeg", "pitch_cdeg", "yaw_rate", "pitch_rate", "crc"],
+  "additionalProperties": false
+}

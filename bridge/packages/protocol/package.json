@@ -1,0 +1,15 @@
+{
+  "name": "@ht/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HeadTracking wire protocol: 16 B 空口帧（Quest/PC → C5）与 30 B F411 帧（C5 → SPI），含 CRC16/CCITT 与 JSON Schema。",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./json-schema/*": "./json-schema/*"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "gen:schema": "node ./scripts/gen-json-schema.mjs"
+  }
+}

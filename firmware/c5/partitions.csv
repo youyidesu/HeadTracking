@@ -1,0 +1,5 @@
+# 2MB flash：app 给到 0x1C0000 (1.75MB)，够 BLE + WiFi 两个协议栈
+# Name,   Type, SubType, Offset,   Size
+nvs,      data, nvs,     0x9000,   0x6000
+phy_init, data, phy,     0xf000,   0x1000
+factory,  app,  factory, 0x10000,  0x1C0000

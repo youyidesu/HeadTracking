@@ -1,0 +1,12 @@
+{
+  "name": "@ht/console",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PC 桌面控制台（WPF 设置页 + 图传桥接启停 + 自检），实现见 legacy/。",
+  "type": "module",
+  "scripts": {
+    "start": "pwsh -NoProfile -File legacy/HeadTracker.ps1",
+    "cli": "pwsh -NoProfile -File legacy/videobridge.ps1",
+    "doctor": "pwsh -NoProfile -File legacy/videobridge.ps1 doctor"
+  }
+}

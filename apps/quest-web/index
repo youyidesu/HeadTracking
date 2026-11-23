@@ -1,0 +1,813 @@
+<!doctype html>
+<meta charset=utf-8>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HeadTracking · Quest 调试台</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--fg:#c9d1d9;--dim:#8b949e;--ok:#3fb950;--warn:#d29922;--err:#f85149;--acc:#58a6ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 -apple-system,"Segoe UI",Roboto,"Microsoft YaHei",monospace}
+  header{display:flex;gap:16px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.5px}
+  .pill{font-size:12px;padding:2px 8px;border-radius:10px;border:1px solid var(--line);color:var(--dim)}
+  .pill.on{color:var(--ok);border-color:var(--ok)}
+  .pill.off{color:var(--err);border-color:var(--err)}
+  main{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 18px 40px}
+  @media(max-width:820px){main{grid-template-columns:1fr}}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+  section h2{font-size:13px;margin:0 0 10px;color:var(--acc);font-weight:600;letter-spacing:.5px}
+  label{display:block;font-size:12px;color:var(--dim);margin:8px 0 4px}
+  input,select{width:100%;background:#0d1117;border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:7px 9px;font:13px monospace}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  button{flex:1;min-width:110px;background:#21262d;border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:9px 12px;font:13px monospace;cursor:pointer;transition:.15s}
+  button:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+  button:disabled{opacity:.4;cursor:default}
+  button.primary{border-color:var(--ok);color:var(--ok)}
+  button.danger{border-color:var(--err);color:var(--err)}
+  #stats{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 14px;margin-top:12px;font:12.5px monospace}
+  #stats div{display:flex;justify-content:space-between;border-bottom:1px dotted #21262d;padding:2px 0}
+  #stats b{color:var(--fg);font-weight:500}
+  #log{height:190px;overflow:auto;background:#0a0d12;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:12px/1.55 monospace;color:var(--dim);white-space:pre-wrap;margin-top:12px}
+  .g{color:var(--ok)}.r{color:var(--err)}.y{color:var(--warn)}
+  .hint{font-size:12px;color:var(--dim);margin-top:8px}
+  #xrCanvas{position:fixed;inset:0;z-index:-1}
+</style>
+
+<div style="position:sticky;top:0;z-index:99;background:#0b3d91;color:#fff;
+  font:14px monospace;padding:8px 14px">构建 11-21 13:04 · v6 · 看到这一条说明你打开的是新页面</div>
+<div id="statusbar" style="position:sticky;top:0;z-index:98;background:#111;color:#0f0;
+  font:14px monospace;padding:6px 14px;border-bottom:1px solid #30363d">
+  WS: <b id="sbState">未连接</b> · <span id="sbUrl">-</span> · TX <b id="sbTx">0</b> · DROP <b id="sbDrop">0</b> · <b id="sbSend">未发送</b>
+</div>
+<header>
+  <h1>HeadTracking · Quest 调试台</h1>
+  <span class="pill" id="pXr">XR ?</span>
+  <span class="pill" id="pBt">蓝牙 ?</span>
+  <span class="pill" id="pSec">安全上下文 ?</span>
+  <span class="pill" id="pDev">未连接</span>
+</header>
+
+<main>
+  <section>
+    <h2>① 选择传输方式</h2>
+    <label>通道</label>
+    <select id="transport">
+      <option value="ws" selected>WebSocket → C5（WiFi）</option>
+      <option value="ble">BLE（需要浏览器支持 Web Bluetooth）</option>
+    </select>
+    <label>WebSocket 地址（选 ws 时用）</label>
+    <input id="wsurl" spellcheck="false">
+
+    <label style="margin-top:10px">视频源（MJPEG）</label>
+    <input id="vsrc" value="stream.mjpg" spellcheck="false">
+
+    <h2 style="margin-top:18px">② 面板位置（进 XR 前调好）</h2>
+    <label>下压角度 <span id="vTilt">0</span>°　（0 = 正前方，越大越往下）</label>
+    <input id="tilt" type="range" min="-20" max="60" step="5" value="10">
+    <label>距离 <span id="vDist">2.0</span> m</label>
+    <input id="dist" type="range" min="1.0" max="3.0" step="0.1" value="1.0">
+    <label>宽度 <span id="vW">1.4</span> m（16:9 自动换算高度）</label>
+    <input id="w" type="range" min="0.8" max="2.4" step="0.1" value="1.4">
+
+    <h2 style="margin-top:18px">③ 目标设备（选 BLE 时用）</h2>
+    <label>名称前缀（过滤扫描结果）</label>
+    <input id="prefix" value="" placeholder="留空=显示全部；填 C5- 只显示 C5 那批">
+    <label>服务 UUID（默认 FFF0，写特征 FFF1，通知 FFF2）</label>
+    <input id="svc" value="FFF0" spellcheck="false">
+    <label style="margin-top:10px"><input id="auto" type="checkbox" checked style="width:auto"> 打开页面时自动连接</label>
+    <div class="row">
+      <button id="btnScan" class="primary">扫描并连接</button>
+      <button id="btnDis" disabled>断开</button>
+    </div>
+    <div class="hint">点「扫描并连接」会弹系统选择框。<b>前缀留空</b>会列出附近所有 BLE 设备——先这样确认能看到目标，再考虑加过滤。</div>
+
+    <h2 style="margin-top:18px">② 发送参数</h2>
+    <label>发送频率</label>
+    <select id="hz">
+      <option value="30">30 Hz</option>
+      <option value="60">60 Hz</option>
+      <option value="90" selected>90 Hz（推荐）</option>
+      <option value="120">120 Hz</option>
+    </select>
+    <div class="row">
+      <button id="btnSend" class="primary" disabled>开始发送</button>
+      <button id="btnZero" disabled>回中</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>③ 实时数据</h2>
+    <div id="stats">
+      <div><span>渲染 FPS</span><b id="sFps">-</b></div>
+      <div><span>发送频率</span><b id="sHz">-</b></div>
+      <div><span>已发送</span><b id="sSent">0</b></div>
+      <div><span>失败</span><b id="sDrop">0</b></div>
+      <div><span>往返 RTT</span><b id="sRtt">-</b></div>
+      <div><span>序号</span><b id="sSeq">0</b></div>
+      <div><span>YAW</span><b id="sYaw">-</b></div>
+      <div><span>PITCH</span><b id="sPitch">-</b></div>
+      <div><span>XR 状态</span><b id="sXr">未进入</b></div>
+      <div><span>设备</span><b id="sDev">-</b></div>
+      <div><span>通道</span><b id="sTp">-</b></div>
+    </div>
+
+    <h2 style="margin-top:18px">④ XR 视图</h2>
+    <div class="row">
+      <button id="btnXr" class="primary">进入 XR</button>
+      <button id="btnStopXr" disabled>退出 XR</button>
+    </div>
+    <div class="hint">进入后：16:9 图传占位面板正前方 2 m，左下角数据浮窗。</div>
+
+    <div id="log"></div>
+  </section>
+</main>
+
+<canvas id="xrCanvas"></canvas>
+
+<script>
+'use strict';
+/* 启动探针 + 全局错误上报：页面在头显上挂掉时也能从服务端看到原因 */
+try { navigator.sendBeacon('/report', 'LOAD v11 ' + location.href); } catch (e) {}
+window.addEventListener('error', function (ev) {
+  try {
+    navigator.sendBeacon('/report',
+      'ERR ' + ev.message + ' @ ' + (ev.filename || '').split('/').pop() + ':' + ev.lineno);
+  } catch (e) {}
+});
+window.addEventListener('unhandledrejection', function (ev) {
+  try { navigator.sendBeacon('/report', 'REJ ' + (ev.reason && ev.reason.message || ev.reason)); } catch (e) {}
+});
+const $ = id => document.getElementById(id);
+const logEl = $('log');
+function log(msg, cls) {
+  const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  logEl.insertAdjacentHTML('beforeend',
+    `<div><span style="color:#484f58">${t}</span> <span class="${cls || ''}">${msg}</span></div>`);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function pill(el, ok, yes, no) { el.className = 'pill ' + (ok ? 'on' : 'off'); el.textContent = ok ? yes : no; }
+
+/* ── 能力探测 ── */
+pill($('pXr'), !!navigator.xr, 'XR 可用', 'XR 不可用');
+pill($('pBt'), !!navigator.bluetooth, '蓝牙可用', '蓝牙不可用');
+pill($('pSec'), window.isSecureContext, '安全上下文', '非安全上下文');
+// 自动选 WS 地址：页面本身在 127.0.0.1 时走明文 ws，避开自签证书
+{
+  const auto = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
+    ? 'ws://192.168.4.1/ws'
+    : 'wss://' + location.host + '/ws';
+  $('wsurl').value = auto;
+  log('WS 地址自动设为 ' + auto + (auto.startsWith('ws:') ? '（明文，绕过自签证书）' : '（走 TLS）'));
+}
+log('页面加载完成 · 版本 v5-步进诊断');
+window.__xrErr = (m) => {
+  let b = document.getElementById('errbar');
+  if (!b) {
+    b = document.createElement('div'); b.id = 'errbar';
+    b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;background:#7a1f1f;color:#fff;'
+      + 'font:13px/1.5 monospace;padding:10px 14px;white-space:pre-wrap';
+    document.body.appendChild(b);
+  }
+  b.textContent = m;
+};
+if (location.search.indexOf('v=') < 0) log('提示：地址加 ?v=3 可强制刷新缓存', 'y');
+if (!navigator.bluetooth) log('缺少 navigator.bluetooth —— 必须用 https 或 http://127.0.0.1', 'r');
+if (navigator.xr) navigator.xr.isSessionSupported('immersive-ar')
+  .then(v => log('immersive-ar: ' + (v ? '支持' : '不支持'), v ? 'g' : 'r'))
+  .catch(e => log('immersive-ar 查询失败: ' + e, 'r'));
+
+/* ── 协议 ── */
+const FLAG_VALID = 0x01;
+function crc16(buf, len) {
+  let crc = 0xffff;
+  for (let i = 0; i < len; i++) {
+    crc ^= buf[i] << 8;
+    for (let b = 0; b < 8; b++) crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+  }
+  return crc;
+}
+function buildFrame(yaw, pitch, yawRate, seq, flags) {
+  const b = new Uint8Array(16), v = new DataView(b.buffer);
+  v.setUint16(0, 0xa55a, true);
+  v.setUint16(2, seq & 0xffff, true);
+  v.setInt16(4, Math.round(yaw * 100), true);
+  v.setInt16(6, Math.round(pitch * 100), true);
+  v.setInt16(8, Math.max(-32767, Math.min(32767, Math.round(yawRate * 10))), true);
+  v.setInt16(10, 0, true);
+  v.setUint16(12, flags, true);
+  v.setUint16(14, crc16(b, 14), true);
+  return b;
+}
+function uuid16(hex) {
+  const h = hex.replace(/^0x/i, '').padStart(4, '0').toUpperCase();
+  return `0000${h}-0000-1000-8000-00805f9b34fb`;
+}
+
+/* ── 面板位置（滑杆 + localStorage） ── */
+const POSE = (() => {
+  const def = { tilt: 10, dist: 1.0, w: 1.4 };   // 实测最舒服：10° / 1.0 m / 1.4 m
+  try { Object.assign(def, JSON.parse(localStorage.getItem('ht.pose') || '{}')); } catch {}
+  return def;
+})();
+
+function bindPos() {
+  const t = $('tilt'), d = $('dist'), w = $('w');
+  t.value = POSE.tilt; d.value = POSE.dist; w.value = POSE.w;
+  const show = () => {
+    POSE.tilt = +t.value; POSE.dist = +d.value; POSE.w = +w.value;
+    $('vTilt').textContent = POSE.tilt;
+    $('vDist').textContent = POSE.dist.toFixed(1);
+    $('vW').textContent = POSE.w.toFixed(1);
+    localStorage.setItem('ht.pose', JSON.stringify(POSE));
+  };
+  t.oninput = d.oninput = w.oninput = show;
+  show();
+}
+
+/* ── 状态 ── */
+const S = {
+  device: null, chWrite: null, connected: false, sending: false,
+  seq: 0, sent: 0, dropped: 0, rtt: [], pending: new Map(),
+  rate: 90, lastSend: 0, lastYaw: 0, zero: null, lastQuat: null,
+  fps: 0, frames: 0, fpsT0: performance.now(),
+};
+
+/* ── BLE ── */
+$('btnScan').onclick = async () => {
+  const tp = $('transport').value;
+  if (tp === 'ws') { connectWS(); return; }
+  if (!navigator.bluetooth) { log('浏览器不支持 Web Bluetooth', 'r'); return; }
+  const prefix = $('prefix').value.trim();
+  const svcHex = ($('svc').value.trim() || 'FFF0');
+  const svc = uuid16(svcHex);
+  try {
+    try {
+      const avail = navigator.bluetooth.getAvailability ? await navigator.bluetooth.getAvailability() : true;
+      log('蓝牙可用性: ' + avail);
+    } catch (e) { log('getAvailability 失败: ' + e.name, 'y'); }
+    log('打开设备选择框…');
+    const opts = { optionalServices: [svc] };
+    if (prefix) opts.filters = [{ namePrefix: prefix }];
+    const dev = await navigator.bluetooth.requestDevice(opts);
+    log(`选中 ${dev.name || '(无名)'} ${dev.id}`, 'g');
+    dev.addEventListener('gattserverdisconnected', () => {
+      S.connected = false; S.sending = false;
+      $('pDev').className = 'pill off'; $('pDev').textContent = '已断开';
+      $('btnSend').disabled = true; $('btnDis').disabled = true;
+      $('btnSend').textContent = '开始发送';
+      log('设备断开', 'y');
+    });
+
+    const server = await dev.gatt.connect();
+    log('GATT 已连接，找服务 ' + svcHex.toUpperCase());
+
+    const service = await server.getPrimaryService(svc);
+    log('服务已找到，找写特征 FFF1');
+    S.chWrite = await service.getCharacteristic(uuid16('FFF1'));
+    log('写特征属性: ' + JSON.stringify(S.chWrite.properties || {}));
+    try {
+      const tn = await service.getCharacteristic(uuid16('FFF2'));
+      await tn.startNotifications();
+      tn.addEventListener('characteristicvaluechanged', ev => {
+        const dv = ev.target.value;
+        if (dv.byteLength >= 4) {
+          const seq = dv.getUint16(2, true);
+          const t0 = S.pending.get(seq);
+          if (t0) { S.pending.delete(seq); S.rtt.push(performance.now() - t0); if (S.rtt.length > 100) S.rtt.shift(); }
+        }
+      });
+      log('已订阅 FFF2（可测 RTT）');
+    } catch { log('FFF2 通知不可用（只能测发送）', 'y'); }
+
+    S.device = dev; S.connected = true;
+    $('pDev').className = 'pill on'; $('pDev').textContent = dev.name || '已连接';
+    $('sDev').textContent = dev.name || dev.id;
+    $('btnSend').disabled = false; $('btnDis').disabled = false; $('btnZero').disabled = false;
+    log('连接成功，服务 ' + svcHex.toUpperCase(), 'g');
+  } catch (e) {
+    log('连接失败: ' + e.name + ' — ' + e.message, 'r');
+    if (e.stack) log(e.stack.split(String.fromCharCode(10)).slice(0, 3).join(' | '), 'r');
+  }
+};
+function connectWS() {
+  const url = $('wsurl').value.trim();
+  log('WebSocket 连接 ' + url + ' …');
+  try {
+    const ws = new WebSocket(url);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => {
+      S.ws = ws; S.connected = true;
+      $('pDev').className = 'pill on'; $('pDev').textContent = 'WS 已连';
+      $('sDev').textContent = url; $('sTp').textContent = 'WebSocket';
+      $('btnSend').disabled = false; $('btnDis').disabled = false; $('btnZero').disabled = false;
+      $('sbState').textContent = '已连接';
+      $('sbState').style.color = '#3fb950';
+      $('sbUrl').textContent = url;
+      log('WebSocket 已连接', 'g');
+
+      // 自动开始发送：发送是在 XR 帧循环里做的，所以进 XR 才会真的发出帧
+      S.sending = true;
+      $('sbSend').textContent = '发送中';
+      $('sbSend').style.color = '#3fb950';
+      $('btnSend').textContent = '停止发送';
+      $('btnSend').className = 'danger';
+      log('自动开始发送（进入 XR 后才会真正发出帧）', 'g');
+    };
+    ws.onerror = (ev) => {
+      $('sbState').textContent = '错误';
+      $('sbState').style.color = '#f85149';
+      $('sbUrl').textContent = url;
+      log('WebSocket 错误: ' + (ev && ev.message ? ev.message : '连接被拒或地址不可达'), 'r');
+      log('  readyState=' + ws.readyState + '  url=' + url, 'y');
+    };
+    ws.onclose = (ev) => {
+      S.ws = null; S.connected = false; S.sending = false;
+      $('pDev').className = 'pill off'; $('pDev').textContent = '已断开';
+      $('btnSend').disabled = true; $('btnDis').disabled = true;
+      $('sbState').textContent = '断开 code=' + ev.code;
+      $('sbState').style.color = '#d29922';
+      log('WebSocket 断开: code=' + ev.code + ' reason=' + (ev.reason || '(空)'), 'y');
+    };
+  } catch (e) {
+    log('WebSocket 创建失败: ' + e.name + ' — ' + e.message, 'r');
+  }
+}
+
+$('btnDis').onclick = () => {
+  S.sending = false;
+  if (S.ws) { try { S.ws.close(); } catch {} }
+  if (S.device && S.device.gatt.connected) S.device.gatt.disconnect();
+};
+$('hz').onchange = () => { S.rate = +$('hz').value; log('发送频率 ' + S.rate + ' Hz'); };
+$('btnSend').onclick = () => {
+  S.sending = !S.sending;
+  $('btnSend').textContent = S.sending ? '停止发送' : '开始发送';
+  $('btnSend').className = S.sending ? 'danger' : 'primary';
+  log(S.sending ? '开始发送' : '停止发送', S.sending ? 'g' : 'y');
+};
+$('btnZero').onclick = () => { S.zero = S.lastQuat; log('回中：当前朝向记为 0°', 'y'); };
+
+/* ── 四元数 ── */
+const invQuat = q => [-q[0], -q[1], -q[2], q[3]];
+function mulQuat(a, b) {
+  return [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ];
+}
+function rotVec(q, v) {
+  const [x, y, z, w] = q;
+  const ix = w * v[0] + y * v[2] - z * v[1];
+  const iy = w * v[1] + z * v[0] - x * v[2];
+  const iz = w * v[2] + x * v[1] - y * v[0];
+  const iw = -x * v[0] - y * v[1] - z * v[2];
+  return [
+    ix * w + iw * -x + iy * -z - iz * -y,
+    iy * w + iw * -y + iz * -x - ix * -z,
+    iz * w + iw * -z + ix * -y - iy * -x,
+  ];
+}
+
+function transmit(buf) {
+  if (S.ws && S.ws.readyState === 1) { S.ws.send(buf); return Promise.resolve(); }
+  if (!S.chWrite) return Promise.reject(new Error('没有可用通道'));
+  return writeFrame(buf);
+}
+
+let _writeMode = 0;   // 0=未定 1=noRsp 2=withRsp 3=legacy
+function writeFrame(buf) {
+  const ch = S.chWrite;
+  if (_writeMode === 1) return ch.writeValueWithoutResponse(buf);
+  if (_writeMode === 2) return ch.writeValueWithResponse(buf);
+  if (_writeMode === 3) return ch.writeValue(buf);
+
+  // 第一次：依次探测可用的写法
+  const tryNext = (chain) => {
+    if (!chain.length) return Promise.reject(new Error('该特征没有可用的写方法'));
+    const [mode, fn] = chain[0];
+    let p;
+    try { p = fn(); } catch (e) { return tryNext(chain.slice(1)); }
+    return p.then(v => { _writeMode = mode; log('写方式确定为 ' + mode); return v; })
+             .catch(() => tryNext(chain.slice(1)));
+  };
+  return tryNext([
+    [1, () => ch.writeValueWithoutResponse(buf)],
+    [2, () => ch.writeValueWithResponse(buf)],
+    [3, () => ch.writeValue(buf)],
+  ]);
+}
+
+function sendFrame(yaw, pitch, yawRate) {
+  if (!S.connected) return;
+  const seq = S.seq & 0xffff;
+  const buf = buildFrame(yaw, pitch, yawRate, seq, FLAG_VALID);
+  S.pending.set(seq, performance.now());
+  S.seq++;
+  transmit(buf)
+    .then(() => { S.sent++; const e = $('sbTx'); if (e) e.textContent = S.sent; })
+    .catch(e => {
+      S.dropped++;
+      const d = $('sbDrop'); if (d) d.textContent = S.dropped;
+      if (S.dropped === 1) log('写失败: ' + (e && e.message ? e.message : e), 'r');
+    });
+}
+
+/* ── WebGL 场景 ── */
+const VERT = 'attribute vec3 aPos; attribute vec2 aUv; uniform mat4 uMvp; varying vec2 vUv;' +
+  'void main(){ vUv=aUv; gl_Position=uMvp*vec4(aPos,1.0); }';
+const FRAG = 'precision mediump float; varying vec2 vUv; uniform sampler2D uTex; uniform float uA;' +
+  'void main(){ vec4 c=texture2D(uTex,vUv); gl_FragColor=vec4(c.rgb,c.a*uA); }';
+
+function compileShader(gl, type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mat4Mul(a, b) {
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+    let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s;
+  }
+  return o;
+}
+function invertRigid(m) {
+  const o = new Float32Array(16);
+  o[0] = m[0]; o[1] = m[4]; o[2] = m[8];
+  o[4] = m[1]; o[5] = m[5]; o[6] = m[9];
+  o[8] = m[2]; o[9] = m[6]; o[10] = m[10];
+  const tx = m[12], ty = m[13], tz = m[14];
+  o[12] = -(o[0] * tx + o[4] * ty + o[8] * tz);
+  o[13] = -(o[1] * tx + o[5] * ty + o[9] * tz);
+  o[14] = -(o[2] * tx + o[6] * ty + o[10] * tz);
+  o[3] = o[7] = o[11] = 0; o[15] = 1; return o;
+}
+function mat4Translate(x, y, z) {
+  const m = new Float32Array(16);
+  m[0] = m[5] = m[10] = m[15] = 1;
+  m[12] = x; m[13] = y; m[14] = z;
+  return m;
+}
+function mat4RotX(deg) {
+  const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  const m = new Float32Array(16);
+  m[0] = 1; m[5] = c; m[6] = s; m[9] = -s; m[10] = c; m[15] = 1;
+  return m;
+}
+function mat4Scale3(x, y, z) {
+  const m = new Float32Array(16);
+  m[0] = x; m[5] = y; m[10] = z; m[15] = 1;
+  return m;
+}
+
+function modelMat(x, y, z, w, h, rotY) {
+  const c = Math.cos(rotY), s = Math.sin(rotY);
+  const m = new Float32Array(16);
+  m[0] = c * w; m[1] = 0; m[2] = -s * w;
+  m[4] = 0; m[5] = h; m[6] = 0;
+  m[8] = s * h; m[9] = 0; m[10] = c * h;
+  m[12] = x; m[13] = y; m[14] = z; m[15] = 1;
+  return m;
+}
+
+const vidCv = document.createElement('canvas'); vidCv.width = 1280; vidCv.height = 720;
+
+/* MJPEG 串流：<img> 直接吃 multipart/x-mixed-replace */
+const streamImg = new Image();
+streamImg.crossOrigin = 'anonymous';
+const ST = { got: false, cfps: 0, cframes: 0, ct0: performance.now(), lastDraw: 0 };
+
+function startStream(url) {
+  ST.got = false;
+  streamImg.onload = () => { ST.got = true; log('视频流已连上: ' + url, 'g'); };
+  streamImg.onerror = () => log('视频流打不开: ' + url, 'r');
+  streamImg.src = url + (url.indexOf('?') < 0 ? '?' : '&') + 't=' + Date.now();
+  // 2.5 秒还没出画就切快照轮询
+  setTimeout(() => { if (!ST.got) startSnapshotPolling(url); }, 2500);
+}
+
+/* 兜底：Quest 浏览器若不解 multipart/x-mixed-replace，
+   就退化成 30 Hz 轮询 /snapshot.jpg（同一台机器，开销可接受） */
+function startSnapshotPolling(base) {
+  if (ST.pollTimer) return;
+  const snap = base.replace('stream.mjpg', 'snapshot.jpg');
+  log('改用快照轮询: ' + snap, 'y');
+  ST.pollTimer = setInterval(async () => {
+    if (ST.fetching) return;
+    ST.fetching = true;
+    try {
+      const r = await fetch(snap + '?t=' + Date.now(), { cache: 'no-store' });
+      const blob = await r.blob();
+      const bmp = await createImageBitmap(blob);
+      if (ST.bitmap && ST.bitmap.close) ST.bitmap.close();
+      ST.bitmap = bmp;
+      ST.got = true;
+      ST.cframes++;
+    } catch (e) {
+      if (!ST.pollErr) { ST.pollErr = 1; log('快照轮询失败: ' + e.message, 'r'); }
+    } finally {
+      ST.fetching = false;
+    }
+  }, 33);
+}
+
+const probeCv = document.createElement('canvas');
+probeCv.width = 32; probeCv.height = 18;
+const probeCtx = probeCv.getContext('2d', { willReadFrequently: true });
+
+function frameHasSignal(src, w, h) {
+  probeCtx.drawImage(src, 0, 0, 32, 18);
+  const d = probeCtx.getImageData(0, 0, 32, 18).data;
+  let mx = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = d[i] + d[i + 1] + d[i + 2];
+    if (v > mx) mx = v;
+  }
+  return mx > 24;          /* 平均 8/255 以下当黑屏 */
+}
+
+function drawStreamToCanvas() {
+  const c = vidCv.getContext('2d');
+  if (ST.bitmap) {
+    const iw = ST.bitmap.width, ih = ST.bitmap.height;
+    if (!frameHasSignal(ST.bitmap, iw, ih)) { ST.noSignal = true; return false; }
+    ST.noSignal = false;
+    const scale = Math.max(1280 / iw, 720 / ih);
+    c.drawImage(ST.bitmap, (1280 - iw * scale) / 2, (720 - ih * scale) / 2, iw * scale, ih * scale);
+    return true;
+  }
+  const iw = streamImg.naturalWidth, ih = streamImg.naturalHeight;
+  if (!iw || !ih) return false;
+  if (!frameHasSignal(streamImg, iw, ih)) { ST.noSignal = true; return false; }
+  ST.noSignal = false;
+  // 等比铺满 1280x720，超出的裁掉（不变形）
+  const scale = Math.max(1280 / iw, 720 / ih);
+  const dw = iw * scale, dh = ih * scale;
+  c.drawImage(streamImg, (1280 - dw) / 2, (720 - dh) / 2, dw, dh);
+  return true;
+}
+function drawPlaceholder() {
+  const c = vidCv.getContext('2d');
+  c.fillStyle = '#0b0f14'; c.fillRect(0, 0, 1280, 720);
+  c.strokeStyle = '#16222e'; c.lineWidth = 1;
+  for (let x = 0; x <= 1280; x += 64) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, 720); c.stroke(); }
+  for (let y = 0; y <= 720; y += 64) { c.beginPath(); c.moveTo(0, y); c.lineTo(1280, y); c.stroke(); }
+  c.strokeStyle = '#2ecc71'; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(600, 360); c.lineTo(680, 360); c.stroke();
+  c.beginPath(); c.moveTo(640, 320); c.lineTo(640, 400); c.stroke();
+  c.fillStyle = '#2ecc71'; c.textAlign = 'center';
+  c.font = '600 44px Consolas,monospace'; c.fillText('FPV 图传占位', 640, 300);
+  c.fillStyle = '#4a6b82'; c.font = '28px Consolas,monospace';
+  c.fillText('1920 × 1080 · 16:9', 640, 440);
+  c.strokeStyle = '#1f6f4a'; c.lineWidth = 3;
+  const m = 40, L = 70;
+  [[m, m, 1, 1], [1280 - m, m, -1, 1], [m, 720 - m, 1, -1], [1280 - m, 720 - m, -1, -1]]
+    .forEach(([x, y, sx, sy]) => { c.beginPath(); c.moveTo(x, y + sy * L); c.lineTo(x, y); c.lineTo(x + sx * L, y); c.stroke(); });
+}
+
+const hudCv = document.createElement('canvas'); hudCv.width = 512; hudCv.height = 160;
+function drawHud(st) {
+  const c = hudCv.getContext('2d');
+  c.clearRect(0, 0, 512, 160);
+  c.fillStyle = 'rgba(0,0,0,0.62)'; c.fillRect(0, 0, 512, 160);
+  c.font = '600 22px Consolas,monospace'; c.textAlign = 'left'; c.textBaseline = 'middle';
+  const L = (i, t, col, x = 16) => { c.fillStyle = col; c.fillText(t, x, 26 + i * 34); };
+  L(0, `FPS ${String(st.fps | 0).padStart(3)}  ${st.connected ? 'CONN' : 'IDLE'}`,
+    st.connected ? '#57d977' : '#8b949e');
+  c.fillStyle = '#9aa0a6'; c.fillText(`RTT ${st.rtt}`, 320, 26);
+  L(1, `TX ${st.sent}`.padEnd(12) + `DROP ${st.dropped}`, '#9aa0a6');
+  L(2, `YAW ${st.yaw >= 0 ? '+' : ''}${st.yaw.toFixed(1)}°`, '#9aa0a6');
+  c.fillStyle = '#9aa0a6'; c.fillText(`PIT ${st.pitch >= 0 ? '+' : ''}${st.pitch.toFixed(1)}°`, 260, 94);
+  L(3, `${st.hz} Hz   seq ${st.seq}`, '#6b7076');
+}
+
+const XR = { session: null, gl: null, prog: null, ref: null, texVid: null, texHud: null, anchor: null, lastHud: 0, count: 0 };
+
+$('btnXr').onclick = async () => {
+  if (!navigator.xr) { log('浏览器不支持 WebXR', 'r'); return; }
+  try {
+    const canvas = $('xrCanvas');
+    const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['local-floor'] });
+    const gl = canvas.getContext('webgl2', { xrCompatible: true, alpha: true, antialias: false });
+    await gl.makeXRCompatible();
+    session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compileShader(gl, gl.VERTEX_SHADER, VERT));
+    gl.attachShader(prog, compileShader(gl, gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+
+    const pos = new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0]);
+    const uvs = new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]);
+    const idx = new Uint16Array([0, 1, 2, 0, 2, 3]);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, pos, gl.STATIC_DRAW);
+    const aPos = gl.getAttribLocation(prog, 'aPos'); gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
+    const aUv = gl.getAttribLocation(prog, 'aUv'); gl.enableVertexAttribArray(aUv);
+    gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+
+    const mkTex = cv => {
+      const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return t;
+    };
+    drawPlaceholder();
+    drawHud({ fps: 0, connected: false, sent: 0, dropped: 0, rtt: '-', yaw: 0, pitch: 0, hz: S.rate, seq: 0 });
+
+    Object.assign(XR, {
+      session, gl, prog, ref: await session.requestReferenceSpace('local-floor'),
+      texVid: mkTex(vidCv), texHud: mkTex(hudCv), anchor: null, lastHud: 0, count: 6,
+    });
+
+    session.addEventListener('end', () => {
+      XR.session = null;
+      $('btnXr').disabled = false; $('btnStopXr').disabled = true; $('sXr').textContent = '已退出';
+      log('XR 会话结束');
+    });
+    session.requestAnimationFrame(onFrame);
+
+    $('btnXr').disabled = true; $('btnStopXr').disabled = false; $('sXr').textContent = '运行中';
+    log('进入 XR', 'g');
+  } catch (e) {
+    log('进入 XR 失败: ' + e, 'r');
+  }
+};
+$('btnStopXr').onclick = () => XR.session && XR.session.end();
+
+let _step = 'start';
+function onFrame(time, frame) {
+  try { return onFrameInner(time, frame); }
+  catch (e) {
+    if (!XR.errOnce) {
+      XR.errOnce = true;
+      const msg = 'XR 帧异常 @' + _step + ': ' + e.name + ' — ' + e.message;
+      log(msg, 'r');
+      window.__xrErr(msg);
+    }
+  }
+}
+
+function onFrameInner(time, frame) {
+  if (!XR.session) return;
+  XR.session.requestAnimationFrame(onFrame);
+  _step = 'getViewerPose';
+  const pose = frame.getViewerPose(XR.ref);
+  if (!pose) return;
+
+  // 用矩阵取位置：pose.transform.position 在部分实现里是 undefined
+  const m = pose.transform.matrix;
+  const px = m[12], py = m[13], pz = m[14];
+  const o = pose.transform.orientation;
+  const headQ = o ? [o.x, o.y, o.z, o.w] : [0, 0, 0, 1];
+  S.lastQuat = headQ;
+
+  if (!XR.anchor) {
+    const fw = rotVec(headQ, [0, 0, -1]);
+    XR.anchor = { x: px + fw[0] * 2.0, y: py, z: pz + fw[2] * 2.0, rotY: Math.atan2(fw[0], fw[2]) + Math.PI };
+    log('面板落位 ' + XR.anchor.x.toFixed(2) + ', ' + XR.anchor.y.toFixed(2) + ', ' + XR.anchor.z.toFixed(2));
+  }
+
+  const rel = S.zero ? mulQuat(invQuat(S.zero), headQ) : headQ;
+  const f = rotVec(rel, [0, 0, -1]);
+  const yaw = Math.atan2(-f[0], -f[2]) * 180 / Math.PI;
+  const pitch = Math.asin(Math.max(-1, Math.min(1, f[1]))) * 180 / Math.PI;
+  const now = performance.now();
+
+  if (S.sending && now - S.lastSend >= 1000 / S.rate) {
+    const dt = (now - S.lastSend) / 1000;
+    const rate = dt > 0 ? (yaw - S.lastYaw) / dt : 0;
+    S.lastYaw = yaw; S.lastSend = now;
+    sendFrame(yaw, pitch, rate);
+  }
+
+  _step = 'baseLayer';
+  const gl = XR.gl, layer = XR.session.renderState.baseLayer;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  _step = 'useProgram';
+  gl.useProgram(XR.prog);
+
+  _step = 'uniforms';
+  const uMvp = gl.getUniformLocation(XR.prog, 'uMvp');
+  const uA = gl.getUniformLocation(XR.prog, 'uA');
+  const uTex = gl.getUniformLocation(XR.prog, 'uTex');
+
+  // 视角锁定：面板固定在眼前 2 m，不看 anchor、不做 view 矩阵求逆。
+  // 先保证"一定能看见"，world-lock 之后再加。
+  const L = POSE;
+  const VW = L.w, VH = VW * 9 / 16;
+  const HW = VW * 0.325, HH = HW * 0.3125;
+  const TILT_DEG = L.tilt;
+  const d = L.dist;
+  const th = TILT_DEG * Math.PI / 180;
+  const py2 = -d * Math.sin(th), pz2 = -d * Math.cos(th);
+
+  const P = mat4Mul(mat4Translate(0, py2, pz2), mat4RotX(-TILT_DEG));
+  const vid = mat4Mul(P, mat4Scale3(VW, VH, 1));
+  const hud = mat4Mul(
+    mat4Mul(P, mat4Translate(-VW / 2 + HW / 2 + 0.01, -VH / 2 + HH / 2 + 0.01, 0.004)),
+    mat4Scale3(HW, HH, 1));
+
+  _step = 'streamUpload';
+  if (ST.got && now - ST.lastDraw > 33) {      /* 30 Hz 更新视频纹理 */
+    ST.lastDraw = now;
+    if (drawStreamToCanvas()) {
+      gl.bindTexture(gl.TEXTURE_2D, XR.texVid);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, vidCv);
+      ST.cframes++;
+    }
+    if (now - ST.ct0 > 1000) {
+      ST.cfps = ST.cframes * 1000 / (now - ST.ct0);
+      ST.cframes = 0; ST.ct0 = now;
+    }
+  }
+
+  _step = 'hudUpload';
+  if (now - XR.lastHud > 200) {
+    XR.lastHud = now;
+    drawHud({
+      fps: S.fps, connected: S.connected, sent: S.sent, dropped: S.dropped,
+      rtt: S.rtt.length ? (S.rtt.reduce((a, b) => a + b, 0) / S.rtt.length).toFixed(0) + 'ms' : '-',
+      yaw, pitch, hz: S.rate, seq: S.seq,
+    });
+    gl.bindTexture(gl.TEXTURE_2D, XR.texHud);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, hudCv);
+  }
+
+  _step = 'drawLoop';
+  for (const view of pose.views) {
+    const vp = layer.getViewport(view);   // XRView.viewport 是非标准属性，会 undefined
+    gl.viewport(vp.x, vp.y, vp.width, vp.height);
+    const proj = new Float32Array(view.projectionMatrix);
+
+    if (!ST.noSignal && ST.got) {         /* 没接图传 → 留空，不画占位 */
+      gl.disable(gl.BLEND);
+      gl.uniformMatrix4fv(uMvp, false, mat4Mul(proj, vid));
+      gl.uniform1f(uA, 1.0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, XR.texVid);
+      gl.uniform1i(uTex, 0);
+      gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+    }
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniformMatrix4fv(uMvp, false, mat4Mul(proj, hud));
+    gl.uniform1f(uA, 0.92);
+    gl.bindTexture(gl.TEXTURE_2D, XR.texHud);
+    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+  }
+
+  S.frames++;
+  if (now - S.fpsT0 > 1000) { S.fps = S.frames * 1000 / (now - S.fpsT0); S.frames = 0; S.fpsT0 = now; }
+  updateStats(yaw, pitch);
+}
+
+function updateStats(yaw, pitch) {
+  $('sFps').textContent = S.fps.toFixed(0);
+  $('sHz').textContent = S.rate + ' Hz';
+  $('sSent').textContent = S.sent;
+  $('sDrop').textContent = S.dropped;
+  $('sRtt').textContent = S.rtt.length ? (S.rtt.reduce((a, b) => a + b, 0) / S.rtt.length).toFixed(1) + ' ms' : '-';
+  $('sSeq').textContent = S.seq;
+  if (yaw !== undefined) {
+    $('sYaw').textContent = yaw.toFixed(1) + '°';
+    $('sPitch').textContent = pitch.toFixed(1) + '°';
+  }
+}
+// 链路自检：不在 XR 里时用零姿态按 90 Hz 发帧，验证 WS 通道
+setInterval(() => {
+  if (S.sending && S.connected && !XR.session) {
+    sendFrame(0, 0, 0);
+  }
+}, 11);
+
+bindPos();
+startStream($('vsrc').value.trim() || 'stream.mjpg');
+if (new URLSearchParams(location.search).get('vsrc')) $('vsrc').value = new URLSearchParams(location.search).get('vsrc');
+
+// 打开就自动连一次：省得忘记点按钮，也让失败原因更容易暴露
+setTimeout(() => { if (!S.connected) { log('自动连接已触发', 'g'); connectWS(); } }, 600);
+
+// 8 秒后回传状态给 PC（便于远程诊断）
+setTimeout(async () => {
+  try {
+    await fetch('/report', { method: 'POST', body: JSON.stringify({
+      page: 'v11', url: ($('wsurl') || {}).value, connected: S.connected,
+      streamGot: ST.got, streamFps: Math.round(ST.cfps), polling: !!ST.pollTimer,
+      sending: S.sending, sent: S.sent, dropped: S.dropped,
+      state: ($('sbState') || {}).textContent, ua: navigator.userAgent.slice(0, 50) }) });
+  } catch {}
+}, 8000);
+
+setInterval(() => { if (!XR.session) updateStats(); }, 500);
+</script>
