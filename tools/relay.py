@@ -124,6 +124,59 @@ def pick_device(cfg: dict) -> dict:
     return cfg
 
 
+
+def camera_works(camera: str, in_fmt: str = "yuyv422", seconds: float = 1.5) -> bool:
+    """用 ffmpeg 试抓一小段，能出帧就算可用（不写文件，直接丢弃）"""
+    if not camera or not os.path.exists(FFMPEG):
+        return False
+
+    args = [FFMPEG, "-hide_banner", "-loglevel", "info",
+            "-f", "dshow", "-rtbufsize", "128M"]
+    if in_fmt == "yuyv422":
+        args += ["-vcodec", "rawvideo", "-pix_fmt", "yuyv422"]
+    else:
+        args += ["-vcodec", "mjpeg"]
+    args += ["-i", f"video={camera}", "-t", str(seconds), "-f", "null", "-"]
+
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=seconds + 12)
+        text = (r.stderr or "") + (r.stdout or "")
+        # ffmpeg 正常出帧会打印 "frame=   45 fps=..." 或 "video:xxkB"
+        return bool(re.search(r"frame=\s*\d+", text)) or "video:" in text
+    except Exception:
+        return False
+
+
+def resolve_camera(cfg: dict) -> dict:
+    """先试配置里的源，不行就自动找能用的"""
+    print(f"  检测视频源: {cfg['camera']} ...", end=" ", flush=True)
+    if camera_works(cfg["camera"], cfg["in_fmt"]):
+        print("OK")
+        return cfg
+    print("无信号")
+
+    devs = list_video_devices()
+    if not devs:
+        print("  ⚠ 没有可用视频设备（采集卡插了吗？）—— 仍然尝试启动")
+        return cfg
+
+    print("  自动尝试其它设备：")
+    for d in devs:
+        if d == cfg["camera"]:
+            continue
+        print(f"    {d} ...", end=" ", flush=True)
+        if camera_works(d, cfg["in_fmt"]):
+            print("OK")
+            cfg["camera"] = d
+            save_cfg(cfg)
+            print("  已切换并保存:", d)
+            return cfg
+        print("无信号")
+
+    print("  ⚠ 所有设备都出不了帧（检查 HDMI 输入 / VRX 供电）")
+    return cfg
+
+
 # ───────────────────────── adb ─────────────────────────
 
 def adb(args: list[str], timeout=8) -> str:
@@ -236,8 +289,9 @@ def main() -> int:
     elif not os.path.exists(CFG):
         save_cfg(cfg)          # 首次运行：先落盘默认值，不打断启动
         print("  首次运行，已写入默认配置（--pick 可改视频源）")
-    else:
-        print("  视频源:", cfg["camera"], "（--pick 可重选）")
+
+    # 先验证，再兜底：配置里的源不可用就自动换一个能出帧的
+    cfg = resolve_camera(cfg)
 
     port = cfg["port"]
     print(f"\n启动 devserver :{port}  源={cfg['camera']}  {cfg['width']}x{cfg['height']}@{cfg['fps']}")
