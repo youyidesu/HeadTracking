@@ -1,7 +1,6 @@
 # ── 编译产物 ──
+# 注意：只用 **/Release/ 这种带路径前缀的写法，否则 Windows 下大小写不敏感会误伤 release/
 build/
-Debug/
-Release/
 *.o
 *.d
 *.obj
@@ -73,3 +72,5 @@ live*.txt
 Thumbs.db
 desktop.ini
 .DS_Store
+# 图传转接的本机配置（每台机器摄像头名不同）
+tools/relay_config.json

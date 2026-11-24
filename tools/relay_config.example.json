@@ -1,0 +1,10 @@
+{
+  "camera": "UGREEN 95348",
+  "port": 8080,
+  "width": 1280,
+  "height": 720,
+  "fps": 60,
+  "quality": 6,
+  "in_fmt": "yuyv422",
+  "serial": ""
+}

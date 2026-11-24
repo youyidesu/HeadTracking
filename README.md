@@ -242,3 +242,44 @@ docs/analysis/ 下是选型与实测记录，按需查：
 | APK_FEASIBILITY.md | 为什么最后做成 App |
 | FIRMWARE.md | 两 MCU 配置与坑位 |
 | DECISIONS.md | 关键决策记录 |
+---
+
+## 图传转接（电脑端，一键）
+
+比赛现场只需要双击 `tools/relay.bat`：
+
+``````
+============================================
+ HT TURRET 图传转接
+  - 自动选视频源 / 起服务 / 建反向隧道
+============================================
+ 视频源: UGREEN 95348 （--pick 可重选）
+启动 devserver :8080  源=UGREEN 95348  1280x720@60
+ 自检: OK 14404 B
+ 10:22:31 设备 2G0YC5ZG3406T3 | 反向隧道 OK | App 运行中  → 可以戴上头显了
+``````
+
+它做的事：
+
+| 步骤 | 说明 |
+|---|---|
+| 选视频源 | 记住上次选择，`--pick` 可重选，避免拉到笔记本自带摄像头 |
+| 起 devserver | MJPEG / 快照 / 网页一站全有 |
+| 建反向隧道 | 头显一插上就 `adb reverse`，头显里 `127.0.0.1:8080` 直接指向这台电脑 |
+| 检测 App | 头显上 App 跑起来才提示"可以戴了" |
+| 自愈 | devserver 挂了自动重启；采集卡掉线只提示，不反复重连 |
+
+命令行用法：
+
+``````bash
+python tools/relay.py              # 用上次配置直接开
+python tools/relay.py --pick       # 重选视频源
+python tools/relay.py --list       # 只列设备
+python tools/relay.py --port 8081  # 换端口
+``````
+
+本机配置写在 `tools/relay_config.json`（不入库），
+字段参考 `tools/relay_config.example.json`。
+
+> 采集卡输入格式：这块 UGREEN 95348 只认 `yuyv422`，写成 `mjpeg` 会零帧，
+> 配置里 `in_fmt` 保持默认即可。
