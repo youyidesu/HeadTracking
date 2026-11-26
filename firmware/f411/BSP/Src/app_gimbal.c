@@ -51,8 +51,8 @@ static const scurve_lim_t k_lim_pitch = {  720.0f, 2000.0f, 20000.0f }; /* 120 r
 #define REACQ_ERR_DEG       45.0f   /* 误差大于此值就降速追，避免重连后突然甩 */
 #define REACQ_VMAX_DPS      300.0f
 #define TRACK_TAU_S         0.05f   /* 跟随时间常数：响应快但不振 */
-#define JITTER_BAND_YAW_DEG   0.60f  /* yaw 抖动死区：小于它不动（人体自然抖动≈0.6°） */
-#define JITTER_BAND_PITCH_DEG 0.50f  /* pitch 死区略小：抬头/低头动作更大 */
+#define JITTER_BAND_YAW_DEG   0.25f  /* yaw 抖动死区：静息抖动一般 0.1~0.3° */
+#define JITTER_BAND_PITCH_DEG 0.20f  /* pitch 死区略小：动作幅度小、要更跟手 */
 
 /* ---------------- 上电限位自校准（PITCH） ----------------
  * 思路：开机让 pitch 慢速往外扫，遇到机械挡块（驱动器报堵转/限位，或
