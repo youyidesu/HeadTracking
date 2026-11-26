@@ -51,6 +51,8 @@ static const scurve_lim_t k_lim_pitch = {  720.0f, 2000.0f, 20000.0f }; /* 120 r
 #define REACQ_ERR_DEG       45.0f   /* 误差大于此值就降速追，避免重连后突然甩 */
 #define REACQ_VMAX_DPS      300.0f
 #define TRACK_TAU_S         0.05f   /* 跟随时间常数：响应快但不振 */
+#define JITTER_BAND_YAW_DEG   0.60f  /* yaw 抖动死区：小于它不动（人体自然抖动≈0.6°） */
+#define JITTER_BAND_PITCH_DEG 0.50f  /* pitch 死区略小：抬头/低头动作更大 */
 
 /* ---------------- 上电限位自校准（PITCH） ----------------
  * 思路：开机让 pitch 慢速往外扫，遇到机械挡块（驱动器报堵转/限位，或
@@ -300,6 +302,39 @@ static void start_step(uint8_t idx)
 /* 头瞄跟随                                                                    */
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+/* 抖动死区（holding at the middle of jitter）                                  */
+/* -------------------------------------------------------------------------- */
+typedef struct {
+  float   center;      /* 滤波后的中心值，跟随用这个 */
+  uint8_t init;
+} jitter_t;
+
+static jitter_t s_jit_yaw, s_jit_pitch;
+
+/* 死区积分器：
+     偏差在 ±band 内        → 中心完全不动（电机不会跟着抖）
+     偏差超出 band          → 中心只前移"超出量"，动作连续、不跳台阶
+   因此中心值会自然稳定在抖动的中点上。 */
+static float jitter_apply(jitter_t *j, float raw, float band)
+{
+  float err;
+
+  if (!j->init)
+  {
+    j->center = raw;
+    j->init   = 1u;
+    return j->center;
+  }
+
+  err = raw - j->center;
+
+  if (err > band)       j->center += (err - band);
+  else if (err < -band) j->center += (err + band);
+
+  return j->center;
+}
+
 /* 限速+限加速的跟随器：不会因为目标突变而甩过去 */
 static void track_step(axis_t *a, float target, float dt, float vmax, float amax)
 {
@@ -359,6 +394,11 @@ static void gimbal_enter_track(void)
 
   s_yaw.cmd   = y;  s_yaw.vel   = 0.0f;
   s_pitch.cmd = p;  s_pitch.vel = 0.0f;
+
+  /* 死区复位：以进入跟随的那一刻为中心 */
+  s_jit_yaw.init   = 0u;
+  s_jit_pitch.init = 0u;
+
   s_mode = MODE_TRACK;
 }
 
@@ -407,6 +447,10 @@ static void track_task(uint32_t now)
   /* 软限位：pitch ±45°，yaw 不限 */
   if (p >  45.0f) p =  45.0f;
   if (p < -45.0f) p = -45.0f;
+
+  /* 抖动滤波：0.6° 以内不动，保持在中值 */
+  y = jitter_apply(&s_jit_yaw,   y, JITTER_BAND_YAW_DEG);
+  p = jitter_apply(&s_jit_pitch, p, JITTER_BAND_PITCH_DEG);
 
   track_step(&s_yaw,   y, dt, k_lim_yaw.v_max,   k_lim_yaw.a_max);
   track_step(&s_pitch, p, dt, k_lim_pitch.v_max, k_lim_pitch.a_max);
